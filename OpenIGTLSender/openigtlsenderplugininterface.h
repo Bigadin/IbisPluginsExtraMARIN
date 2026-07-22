@@ -17,6 +17,8 @@
 #include "igtlUDPServerSocket.h"
 #include "igtlMessageRTPWrapper.h"
 
+#include "igtlioCommand.h"
+
 #include "openigtlsenderwidget.h"
 
 //User defined parameters to tweak:
