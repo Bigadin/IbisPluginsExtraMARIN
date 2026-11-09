@@ -75,6 +75,27 @@
       </item>
      </layout>
     </item>
+    <item row="18" column="0">
+     <layout class="QHBoxLayout" name="horizontalLayout_5">
+      <item>
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Proximity object:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="proximityObjectName">
+        <property name="toolTip">
+         <string>Name of the scene object the navigation panels react to. Empty falls back to the reference volume.</string>
+        </property>
+        <property name="text">
+         <string></string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
     <item row="13" column="0">
      <widget class="QCheckBox" name="quadView">
       <property name="text">

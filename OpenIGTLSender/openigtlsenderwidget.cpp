@@ -49,9 +49,13 @@ void OpenIGTLSenderWidget::UpdateUi()
     QString sscc = "Socket created commands: " + QString::number(bscc);
     ui->socket_created_commands->setText( sscc );
 
-    //client address:
-    std::string add = m_pluginInterface->GetClientAddress();
-    ui->clientAddress->setText( QString::fromStdString( add ) );
+    //client address: left alone while the user is typing in it. UpdateUi runs on every clock tick,
+    //so overwriting the field here would undo each keystroke before the next one is entered.
+    if( !ui->clientAddress->hasFocus() )
+    {
+        std::string add = m_pluginInterface->GetClientAddress();
+        ui->clientAddress->setText( QString::fromStdString( add ) );
+    }
 
     ui->quadView->setChecked( m_pluginInterface->isDisplayingQuadView() );
 }
@@ -85,6 +89,11 @@ void OpenIGTLSenderWidget::on_quadView_stateChanged( int state ){
     std::cout << "State is:" << state << std::endl;;
     m_pluginInterface->ToggleQuadView( (bool)state );
     UpdateUi();
+}
+
+void OpenIGTLSenderWidget::on_proximityObjectName_textChanged(QString s) {
+    Q_ASSERT(m_pluginInterface);
+    m_pluginInterface->SetProximityObjectName( s );
 }
 
 void OpenIGTLSenderWidget::on_clientAddress_textChanged(QString s) {

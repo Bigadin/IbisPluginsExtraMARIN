@@ -35,6 +35,7 @@ private slots:
     void on_offScreen_stateChanged( int state );
     void on_quadView_stateChanged( int state );
     void on_clientAddress_textChanged( QString s );
+    void on_proximityObjectName_textChanged( QString s );
 
 private:
 

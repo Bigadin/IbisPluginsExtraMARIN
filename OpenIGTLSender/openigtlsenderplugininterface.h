@@ -1,6 +1,7 @@
 #ifndef OpenIGTLSenderPluginInterface_h
 #define OpenIGTLSenderPluginInterface_h
 
+#include <QElapsedTimer>
 #include <QObject>
 
 #include "ibisapi.h"
@@ -21,11 +22,44 @@
 
 #include "openigtlsenderwidget.h"
 
+// WARNING: this sender only works with the Unity version of the tablet app (ARSpine_Ipad,
+// https://github.com/Bigadin/ARSpine_Ipad). Frames are no longer sent as OpenIGTLink H.264 video
+// messages but as JPEG images split into raw UDP datagrams with a custom 20 byte header (see
+// SendFrameInChunks), which no generic OpenIGTLink client (Slicer, PLUS, the original MARIN iOS
+// app) can decode. The H.264 encoder below is still initialised but no longer used for sending.
+
 //User defined parameters to tweak:
 //TODO: all of these parameters should go in a config to be placed in .ibis rather than here
-#define SEND_WIDTH 800
-#define SEND_HEIGHT 600
+// Size of one half of the transmitted image. The frame actually sent is twice as wide: colour on
+// the left, the capture alpha as greyscale on the right. JPEG carries no alpha channel, and a
+// chroma key cannot survive subsampling, so the mask travels beside the picture instead.
+#define SEND_WIDTH 1280
+#define SEND_HEIGHT 720
+#define SEND_TOTAL_WIDTH ( SEND_WIDTH * 2 )
 #define SEND_ASPECT_RATIO (1.*SEND_WIDTH/SEND_HEIGHT)
+#define JPEG_QUALITY 75
+
+// Navigation panels: the axial and sagittal reslice views of PedicleScrewNavigation, sent side by
+// side as one image. They are opaque panels to be displayed, not an overlay to be keyed, so unlike
+// the augmented reality frame they carry no alpha mask.
+#define PANEL_WIDTH 320
+#define PANEL_HEIGHT 320
+#define PANEL_TOTAL_WIDTH ( PANEL_WIDTH * 2 )
+// They are read, not registered against, so they do not need the frame rate of the overlay. CT
+// slices also compress far worse than the mostly empty 3D view, hence the deliberate throttle.
+#define PANEL_PERIOD_MS 100
+// Panels appear when the pointer tip comes within this distance of the reference volume bounding
+// box, and disappear past the second one. The gap is deliberate: with a single threshold the panel
+// would flicker on and off as soon as the operator holds still near the boundary.
+#define PANEL_NEAR_MM 5.0
+#define PANEL_FAR_MM 15.0
+
+// 20 byte header plus payload, kept under the 1500 byte MTU so a datagram is never IP fragmented
+#define CHUNK_HEADER_SIZE 20
+#define CHUNK_PAYLOAD_SIZE 1184
+// Which image a datagram belongs to, so both can share one socket and run at their own rate
+#define STREAM_AR_OVERLAY 0
+#define STREAM_NAV_PANELS 1
 #define SEND_VIDEO_ON_STARTUP true
 // in kbps
 #define TARGET_BIT_RATE 10000
@@ -100,6 +134,25 @@ public:
     bool SetClientAddress( QString s );
     std::string GetClientAddress() { return client_address; }
 
+    /** Name of the scene object the navigation panels react to. Empty means the reference volume,
+     *  whose bounding box is usually far larger than the anatomy of interest. */
+    void SetProximityObjectName( QString s ) { proximityObjectName = s.trimmed(); }
+    QString GetProximityObjectName() { return proximityObjectName; }
+
+    /** Split an encoded frame into datagrams and send them. Header is 20 bytes little endian:
+     *  uint32 frameId, uint16 chunkIndex, uint16 chunkCount, uint64 timestampMs,
+     *  uint8 streamId, uint8 panelsActive, uint16 panelDistanceMm. frameId counts independently
+     *  for each stream. */
+    void SendFrameInChunks( const QByteArray & encoded, quint8 streamId );
+
+    /** Grab the two reslice views of PedicleScrewNavigation, if it is navigating, and lay them side
+     *  by side in bufferPanels. Returns false when there is nothing to send. */
+    bool ComposeNavigationPanels();
+
+    /** Distance from the pointer tip to the bounding box of the reference volume, and the resulting
+     *  on or off decision. Updates panelsActive and panelDistanceMm. */
+    void UpdateProximity();
+
     //TODO, clean all of this
     OpenIGTLSenderWidget * widget;
 
@@ -155,6 +208,26 @@ public:
     GenericEncoder * encoder = nullptr;
     H264Encoder* H264StreamEncoder;
     bool video_to_send = false;
+
+    // Navigation panels. Captured in the GUI thread like the overlay, encoded and sent in the send
+    // thread. Separate buffer and flag so the two streams never wait on each other.
+    vtkSmartPointer<vtkWindowToImageFilter> axialToImageFilter;
+    vtkSmartPointer<vtkWindowToImageFilter> sagittalToImageFilter;
+    uchar * bufferPanels = nullptr;
+    bool panels_to_send  = false;
+    bool panels_reading  = false;
+    QElapsedTimer panelTimer;
+    igtlUint32 panelMessageID = 0;
+
+    // Travel in the three reserved header bytes of every datagram of both streams, so the tablet
+    // knows the state even while the panels are not being sent.
+    bool panelsActive        = false;
+    quint16 panelDistanceMm  = 0xFFFF;
+    QString proximityObjectName;
+
+    // connectStatus runs in the send thread, so it must never block: it notes the time of a failed
+    // attempt here and returns, and the retry happens on a later pass through the loop.
+    QElapsedTimer statusRetryTimer;
 
     bool trackingOK = false;
     bool status_to_send = false;
